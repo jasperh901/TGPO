@@ -2,7 +2,6 @@ name: Project page
 on:
   push:
     branches: [main]
-    paths: ['docs/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -32,7 +31,7 @@ jobs:
           assert not (root / 'paper').exists(), 'Manuscript folder must not be published'
           PY
       - name: Remove obsolete records after a history cleanup
-        if: github.event.forced
+        if: github.event.forced || github.event.head_commit.message == 'Remove obsolete publication records'
         uses: actions/github-script@v7
         with:
           script: |
