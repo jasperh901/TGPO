@@ -1,0 +1,244 @@
+# TGPO paper configuration; paths are supplied by scripts/train.py.
+data:
+  tokenizer: null
+  train_files: ${oc.env:TGPO_DATA_DIR}/tool/train.parquet
+  val_files: null
+  prompt_key: prompt
+  max_prompt_length: 2048
+  max_response_length: 1024
+  train_batch_size: 512
+  val_batch_size: 128
+  return_raw_input_ids: false
+  return_raw_chat: false
+actor_rollout_ref:
+  hybrid_engine: true
+  model:
+    path: ${oc.env:TGPO_MODEL_DIR}/Qwen2.5-3B-Instruct
+    external_lib: null
+    override_config: {}
+    enable_gradient_checkpointing: true
+    use_remove_padding: true
+  actor:
+    strategy: fsdp
+    ppo_mini_batch_size: 128
+    ppo_micro_batch_size: 64
+    use_dynamic_bsz: true
+    ppo_max_token_len_per_gpu: 16384
+    grad_clip: 1.0
+    clip_ratio: 0.2
+    clip_ratio_low: 0.2
+    clip_ratio_high: 0.2
+    loss_agg_mode: token-mean
+    entropy_coeff: 0.001
+    use_kl_loss: false
+    kl_loss_coef: 0.001
+    kl_loss_type: low_var_kl
+    ppo_epochs: 1
+    shuffle: false
+    ulysses_sequence_parallel_size: 1
+    optim:
+      lr: 1.0e-06
+      lr_warmup_steps_ratio: 0.0
+      min_lr_ratio: null
+      warmup_style: constant
+      total_training_steps: -1
+    fsdp_config:
+      wrap_policy:
+        min_num_params: 0
+      param_offload: false
+      grad_offload: false
+      optimizer_offload: false
+      fsdp_size: -1
+    historical_tool_objective: false
+    execution_max_token_len_per_gpu: 16384
+    resume_from_checkpoint: null
+    moco_cagrad_shadow:
+      enabled: true
+      apply_update: true
+      preview_adamw: false
+      objective_count: 2
+      horizon_actor_updates: 400
+      actor_steps_per_outer: 4
+      maximum_norm: 1.0
+      radius: 0.125
+      resolution: 100
+      gather_reference_steps:
+      - 1
+      - 400
+      diagnostic_steps:
+      - 1
+      - 400
+      gather_chunk_elements: 1048576
+      minimum_host_headroom_gib: 16.0
+      allocation_overhead_factor: 1.1
+      geometry_refresh_interval: 1
+      adaptive_refresh_enabled: false
+  ref:
+    fsdp_config:
+      param_offload: true
+      wrap_policy:
+        min_num_params: 0
+      fsdp_size: -1
+    log_prob_micro_batch_size: 128
+    log_prob_use_dynamic_bsz: true
+    log_prob_max_token_len_per_gpu: 16384
+    ulysses_sequence_parallel_size: 1
+  rollout:
+    name: vllm
+    temperature: 1.0
+    top_k: -1
+    top_p: 1.0
+    prompt_length: 2048
+    response_length: 1024
+    dtype: bfloat16
+    gpu_memory_utilization: 0.5
+    ignore_eos: false
+    enforce_eager: true
+    free_cache_engine: true
+    load_format: dummy_dtensor
+    tensor_model_parallel_size: 1
+    max_num_batched_tokens: 8192
+    max_num_seqs: 128
+    log_prob_micro_batch_size: 128
+    log_prob_use_dynamic_bsz: true
+    log_prob_max_token_len_per_gpu: 16384
+    do_sample: true
+    n: 4
+    seed: 1
+critic:
+  strategy: fsdp
+  optim:
+    lr: 1.0e-05
+    lr_warmup_steps_ratio: 0.0
+    min_lr_ratio: null
+    warmup_style: constant
+    total_training_steps: -1
+  model:
+    path: ${oc.env:TGPO_MODEL_DIR}/Qwen2.5-3B-Instruct
+    tokenizer_path: ${oc.env:TGPO_MODEL_DIR}/Qwen2.5-3B-Instruct
+    override_config: {}
+    external_lib: null
+    enable_gradient_checkpointing: false
+    use_remove_padding: false
+    fsdp_config:
+      param_offload: false
+      grad_offload: false
+      optimizer_offload: false
+      wrap_policy:
+        min_num_params: 0
+      fsdp_size: -1
+  ppo_mini_batch_size: 128
+  ppo_micro_batch_size: 64
+  forward_micro_batch_size: 64
+  use_dynamic_bsz: true
+  ppo_max_token_len_per_gpu: 32768
+  forward_max_token_len_per_gpu: 32768
+  ulysses_sequence_parallel_size: 1
+  ppo_epochs: 1
+  shuffle: false
+  grad_clip: 1.0
+  cliprange_value: 0.5
+reward_model:
+  enable: false
+  strategy: fsdp
+  model:
+    input_tokenizer: ${oc.env:TGPO_MODEL_DIR}/Qwen2.5-3B-Instruct
+    path: ~/models/FsfairX-LLaMA3-RM-v0.1
+    external_lib: null
+    use_remove_padding: false
+    fsdp_config:
+      min_num_params: 0
+      param_offload: false
+  micro_batch_size: 64
+  max_length: null
+  ulysses_sequence_parallel_size: 1
+  use_dynamic_bsz: true
+  forward_max_token_len_per_gpu: 32768
+algorithm:
+  gamma: 1.0
+  lam: 1.0
+  length_limit: 4000
+  adv_estimator: scppo_shadow
+  kl_penalty: kl
+  kl_ctrl:
+    type: fixed
+    kl_coef: 0.001
+  filter_groups:
+    enable: false
+    metric: seq_reward
+    max_num_gen_batches: 1
+    generation_batch_size: null
+  gdpo:
+    reward_weights:
+    - 1.0
+    - 1.0
+  dvao:
+    component_names:
+    - correctness
+    - format
+    base_weights:
+    - 0.5
+    - 0.5
+    reward_bounds:
+    - - -3.0
+      - 3.0
+    - - 0.0
+      - 1.0
+    epsilon: 1.0e-06
+    std_correction: 0
+  scppo:
+    component_names:
+    - correctness
+    - format
+    targets:
+    - 3.0
+    - 1.0
+    reward_bounds:
+    - - -3.0
+      - 3.0
+    - - 0.0
+      - 1.0
+    priority_floor: 0.05
+    priority_power: 0.5
+    signal_min_group_fraction: 0.0
+    signal_min_relative_norm: 0.0
+    saturation_tolerance: 0.05
+    crossfit_folds: -1
+    confidence_z: 1.6448536269514722
+    ridge: 1.0e-08
+    calibration:
+      enabled: false
+      group_count: 32
+      anchor_last_n_layers: 2
+      exact_every_n_steps: 4
+      exact_steps: null
+      force_mode: null
+    treatment:
+      ema_beta: 0.8
+      bootstrap_replicates: 2000
+      bootstrap_seed_base: 2026082600
+      bootstrap_lower_quantile: 0.05
+      assert_step1_gdpo_equivalence: true
+      audit_rejected_step_state: false
+      force_gate_decision: null
+trainer:
+  seed: 1
+  total_epochs: 100
+  total_training_steps: 100
+  project_name: TGPO
+  experiment_name: qwen2.5-3b-tgpo
+  logger:
+  - console
+  nnodes: 1
+  n_gpus_per_node: 8
+  save_freq: 10
+  test_freq: -1
+  val_before_train: false
+  critic_warmup: 0
+  default_hdfs_dir: null
+  default_local_dir: ${oc.env:TGPO_OUTPUT_DIR}/checkpoints
+  reward_samples_to_print: 0
+  complete_checkpoint: true
+  checkpoint_keep_latest: 1
+  resume_step: 0
+  stop_after_step: -1

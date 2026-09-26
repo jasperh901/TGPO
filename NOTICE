@@ -1,0 +1,30 @@
+TGPO — Tracked-Gradient Policy Optimization
+
+This release contains modified training code derived from the Apache-2.0
+GDPO/verl snapshot used for the experiments:
+  https://github.com/NVlabs/GDPO
+  commit e1afebe4d118aa2b01ce7a28b76fa52c9da6eeec
+The license distributed with that source snapshot is preserved in LICENSE
+and in each runtime directory. Upstream copyright notices are retained.
+TGPO adds projected temporal gradient tracking, gradient coordination,
+tracker restoration, task configurations, and reproduction launchers.
+The original verl project is https://github.com/volcengine/verl.
+
+Mathematical grading and evaluation preparation also use PRIME components:
+  https://github.com/PRIME-RL/PRIME
+  commit 18ad596f08d487bb546d80d738d99ec697bd2e75
+Their Apache-2.0 license is preserved at eval/LICENSE.PRIME.
+
+The BFCL setup script fetches, rather than vendors, the official evaluator:
+  https://github.com/ShishirPatil/gorilla
+  commit ea13468e4423454d0c213704fb87cf7cb3990433
+eval/bfcl contains the local adapter and patch used with that snapshot;
+the upstream license is preserved at eval/bfcl/LICENSE.
+
+Tool data and prompt conventions originate from ToolRL:
+  https://github.com/qiancheng0/ToolRL
+  commit 8cee13ec0ca72f0461da372a93a6fd8140dbb840
+The downloader fetches data from the original repository.
+
+Datasets, pretrained weights, and separately installed dependencies retain
+their own licenses. This release does not redistribute those downloads.

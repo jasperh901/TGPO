@@ -1,0 +1,40 @@
+.venv*/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.cache/
+.env
+.env.*
+/data/
+/models/
+/outputs/
+/runs/
+/checkpoints/
+/wandb/
+/third_party/
+*.parquet
+*.safetensors
+*.pt
+*.pth
+*.log
+*.jsonl
+.DS_Store
+
+# Keep manuscript materials out of the public code repository.
+/docs/paper/
+/paper/
+*.pdf
+*.ppt
+*.pptx
+# Public result figures are explicitly allowed under docs/assets/figures/.
+
+# Keep account setup tools and sensitive local files out of releases.
+/docs/publish/
+/docs/redirect/
+*.pem
+*.key
+*.p12
+*.pfx
+*.tex
+*.docx

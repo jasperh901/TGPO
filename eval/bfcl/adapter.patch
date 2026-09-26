@@ -1,0 +1,80 @@
+diff --git a/berkeley-function-call-leaderboard/bfcl_eval/constants/model_config.py b/berkeley-function-call-leaderboard/bfcl_eval/constants/model_config.py
+index e332d00..702b2b4 100644
+--- a/berkeley-function-call-leaderboard/bfcl_eval/constants/model_config.py
++++ b/berkeley-function-call-leaderboard/bfcl_eval/constants/model_config.py
+@@ -68,6 +68,7 @@ from bfcl_eval.model_handler.local_inference.salesforce_qwen import (
+     SalesforceQwenHandler,
+ )
+ from bfcl_eval.model_handler.local_inference.think_agent import ThinkAgentHandler
++from bfcl_eval.model_handler.local_inference.toolrl_gdpo import ToolRLGDPOHandler
+ 
+ # -----------------------------------------------------------------------------
+ # A mapping of model identifiers to their respective model configurations.
+@@ -1105,6 +1106,18 @@ api_inference_model_map = {
+ 
+ # Inference through local hosting
+ local_inference_model_map = {
++    "TGPO/ToolRL": ModelConfig(
++        model_name="TGPO/ToolRL",
++        display_name="TGPO ToolRL",
++        url="",
++        org="TGPO",
++        license="apache-2.0",
++        model_handler=ToolRLGDPOHandler,
++        input_price=None,
++        output_price=None,
++        is_fc_model=True,
++        underscore_to_dot=False,
++    ),
+     "deepseek-ai/DeepSeek-R1": ModelConfig(
+         model_name="deepseek-ai/DeepSeek-R1",
+         display_name="DeepSeek-R1 (Prompt) (Local)",
+diff --git a/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/base_oss_handler.py b/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/base_oss_handler.py
+index e26dd8a..6fcfb9c 100644
+--- a/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/base_oss_handler.py
++++ b/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/base_oss_handler.py
+@@ -340,24 +340,27 @@ class OSSHandler(BaseHandler, EnforceOverrides):
+         if hasattr(self, "skip_special_tokens"):
+             extra_body["skip_special_tokens"] = self.skip_special_tokens
+ 
++        request_kwargs = {
++            "model": self.model_path_or_id,
++            "temperature": self.temperature,
++            "prompt": formatted_prompt,
++            "max_tokens": leftover_tokens_count,
++            "timeout": 72000,
++        }
++        if "sampling_seed" in inference_data:
++            request_index = int(inference_data.get("sampling_request_index", 0))
++            request_kwargs["seed"] = (
++                int(inference_data["sampling_seed"]) + 104729 * request_index
++            ) % (2**31 - 1)
++        if "top_p" in inference_data:
++            request_kwargs["top_p"] = float(inference_data["top_p"])
++        if extra_body:
++            request_kwargs["extra_body"] = extra_body
++
+         start_time = time.time()
+-        if len(extra_body) > 0:
+-            api_response = self.client.completions.create(
+-                model=self.model_path_or_id,
+-                temperature=self.temperature,
+-                prompt=formatted_prompt,
+-                max_tokens=leftover_tokens_count,
+-                extra_body=extra_body,
+-                timeout=72000,  # Avoid timeout errors
+-            )
+-        else:
+-            api_response = self.client.completions.create(
+-                model=self.model_path_or_id,
+-                temperature=self.temperature,
+-                prompt=formatted_prompt,
+-                max_tokens=leftover_tokens_count,
+-                timeout=72000,  # Avoid timeout errors
+-            )
++        api_response = self.client.completions.create(**request_kwargs)
++        if "sampling_seed" in inference_data:
++            inference_data["sampling_request_index"] = request_index + 1
+         end_time = time.time()
+ 
+         return api_response, end_time - start_time

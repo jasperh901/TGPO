@@ -1,0 +1,97 @@
+name: Project page
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  actions: write
+  deployments: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check public website contents
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          root = Path('docs')
+          allowed = {'.html', '.css', '.js', '.svg', '.webp', '.md'}
+          for path in root.rglob('*'):
+              if path.is_file() and path.name != '.nojekyll':
+                  assert path.suffix in allowed, f'Unexpected website file: {path}'
+          assert not (root / 'paper').exists(), 'Manuscript folder must not be published'
+          PY
+      - name: Remove obsolete records after a history cleanup
+        if: github.event.forced
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = {owner: context.repo.owner, repo: context.repo.repo};
+            const cutoff = Date.parse(context.payload.head_commit.timestamp);
+            if (!Number.isFinite(cutoff)) throw new Error('Missing cleanup cutoff');
+            const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {...repo, per_page: 100});
+            for (const artifact of artifacts) {
+              if (Date.parse(artifact.created_at) >= cutoff) continue;
+              await github.rest.actions.deleteArtifact({...repo, artifact_id: artifact.id});
+            }
+            const deployments = await github.paginate(github.rest.repos.listDeployments, {...repo, per_page: 100});
+            for (const deployment of deployments) {
+              if (Date.parse(deployment.created_at) >= cutoff) continue;
+              await github.rest.repos.createDeploymentStatus({...repo, deployment_id: deployment.id, state: 'inactive'});
+              await github.rest.repos.deleteDeployment({...repo, deployment_id: deployment.id});
+            }
+            const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {...repo, per_page: 100});
+            for (const run of runs) {
+              if (run.id === context.runId || run.head_sha === context.sha || run.status !== 'completed') continue;
+              if (Date.parse(run.created_at) >= cutoff) continue;
+              await github.rest.actions.deleteWorkflowRun({...repo, run_id: run.id});
+            }
+      - name: Select the code branch as the page source
+        id: page_source
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = {owner: context.repo.owner, repo: context.repo.repo};
+            const {data: current} = await github.rest.repos.getPages(repo);
+            let source = current.source;
+            if (source?.branch !== 'main' || source?.path !== '/docs') {
+              try {
+                await github.rest.repos.updateInformationAboutPagesSite({
+                  ...repo, build_type: 'legacy', source: {branch: 'main', path: '/docs'}
+                });
+                source = {branch: 'main', path: '/docs'};
+              } catch (error) {
+                if (error.status !== 403) throw error;
+                core.warning('Repository settings permission is required: select main and /docs in Settings > Pages. The existing page publication remains active.');
+              }
+            }
+            const supported = (source?.branch === 'main' && source?.path === '/docs') ||
+                              (source?.branch === 'gh-pages' && source?.path === '/');
+            if (!supported) throw new Error('Unexpected GitHub Pages source configuration');
+            core.setOutput('branch', source.branch);
+            core.notice(`GitHub Pages source: ${source.branch} ${source.path}`);
+      - name: Update the existing publishing branch if needed
+        if: steps.page_source.outputs.branch == 'gh-pages'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          site_commit="$(git subtree split --prefix docs)"
+          git push origin "$site_commit:refs/heads/gh-pages"
+      - name: Request the GitHub Pages build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.requestPagesBuild({
+              owner: context.repo.owner,
+              repo: context.repo.repo
+            });
